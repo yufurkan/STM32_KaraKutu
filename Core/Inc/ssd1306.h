@@ -26,11 +26,23 @@ typedef enum {
 } SSD1306_COLOR;
 
 
+//typedef struct {
+//    const uint8_t FontWidth;    /*!< Font width in pixels */
+//    uint8_t FontHeight;   /*!< Font height in pixels */
+//    const uint16_t *data; /*!< Pointer to data font data array */
+//} FontDef;
+
+
+// --- YENİ YAPI Düzeltme
 typedef struct {
-    const uint8_t FontWidth;    /*!< Font width in pixels */
-    uint8_t FontHeight;   /*!< Font height in pixels */
-    const uint16_t *data; /*!< Pointer to data font data array */
-} FontDef;
+	const uint8_t FontWidth;    /*!< Font width in pixels */
+	uint8_t FontHeight;         /*!< Font height in pixels */
+	const uint16_t *data;       /*!< Pointer to data font data array */
+    const uint8_t *char_width;  /*!< 4. Eleman eklemesi. Aldığım kodlarda 4 parametreli bir yapı vardı NULL alabilen son bir eleman daha ekleyerek düzelttim*/
+} SSD1306_Font_t;
+
+//takma ad mainde kullanılması için
+typedef SSD1306_Font_t FontDef;
 
 // FONKSİYONLAR
 void SSD1306_Init(void);

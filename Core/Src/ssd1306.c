@@ -9,6 +9,7 @@
 #include "ssd1306.h"
 #include <math.h>
 #include <stdlib.h>
+
 #include <string.h>
 
 // SH1106 için 132 genişlik gerekiyor
@@ -71,6 +72,33 @@ void SSD1306_GotoXY(uint16_t x, uint16_t y) {
     SSD1306.CurrentY = y;
 }
 
-void SSD1306_Puts(char* str, FontDef Font, SSD1306_COLOR color) {
+void SSD1306_WriteChar(char ch, FontDef Font, SSD1306_COLOR color) {
+    uint32_t i, b, j;
 
+    // Font tablosunda yerini bul (ASCII)
+    // boşluk 32 den başlar
+    if (ch < 32 || ch > 126) return; // Geçersiz karakterse yazmasını engelle
+
+    //
+    for (i = 0; i < Font.FontHeight; i++) {
+        b = Font.data[(ch - 32) * Font.FontHeight + i];
+        for (j = 0; j < Font.FontWidth; j++) {
+            if ((b << j) & 0x8000) {
+                SSD1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR) color);
+            } else {
+                SSD1306_DrawPixel(SSD1306.CurrentX + j, (SSD1306.CurrentY + i), (SSD1306_COLOR)!color);
+            }
+        }
+    }
+
+    // İmleci için sağa kaydır
+    SSD1306.CurrentX += Font.FontWidth;
+}
+
+
+void SSD1306_Puts(char* str, FontDef Font, SSD1306_COLOR color) {
+    while (*str) {
+        SSD1306_WriteChar(*str, Font, color);
+        str++;
+    }
 }
