@@ -5,9 +5,17 @@
  *      Author: yufur
  */
 
-#ifndef INC_SSD1306_FONTS_H_
-#define INC_SSD1306_FONTS_H_
+#ifndef SSD1306_FONTS_H
+#define SSD1306_FONTS_H
 
+#include "ssd1306.h"
 
+#define SSD1306_INCLUDE_FONT_7x10
+#define SSD1306_INCLUDE_FONT_11x18
+#define SSD1306_INCLUDE_FONT_16x26
 
-#endif /* INC_SSD1306_FONTS_H_ */
+extern const FontDef Font_7x10;
+extern const FontDef Font_11x18;
+extern const FontDef Font_16x26;
+
+#endif
