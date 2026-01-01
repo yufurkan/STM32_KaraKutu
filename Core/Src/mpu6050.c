@@ -14,8 +14,11 @@
 // Sensörü Uyandırma Fonksiyonu sonucu döndürüyor
 uint8_t MPU6050_Baslat(I2C_HandleTypeDef *hi2c)
 {
+
     uint8_t uyandirici = 0;
     HAL_StatusTypeDef sonuc;
+
+
 
     // Sensörün 0x6B registerini 0 yap- uyandır
     sonuc = HAL_I2C_Mem_Write(hi2c, MPU6050_ADDR, PWR_MGMT_1_REG, 1, &uyandirici, 1, 100);

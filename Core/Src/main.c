@@ -41,6 +41,7 @@
 /* USER CODE BEGIN PD */
 MPU6050_t Sensor;
 uint8_t sistem_modu = 0;
+uint32_t kaza_zamani = 0;
 
 /* USER CODE END PD */
 
@@ -133,6 +134,7 @@ int main(void)
 
   if(MPU6050_Baslat(&hi2c1))
       {
+	  	  HAL_Delay(500);
           char m[] = "MPU6050 Baglantisi Kuruldu! \r\n";
           HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
       }
@@ -198,14 +200,16 @@ int main(void)
 	  if(Sensor.AccX == 0 && Sensor.AccY == 0 && Sensor.AccZ == 0) {
 
 
-	           MPU6050_Baslat(&hi2c1);
+		    sprintf(mesaj, "MPU6050 Baslatılıyor G \r\n");
+		   	HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	        MPU6050_Baslat(&hi2c1);
 	      }
 
 	      //  MOD DEĞİŞTİRME
 	      if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET){
 	          sistem_modu++;
 	          if(sistem_modu >= 2) sistem_modu = 0;
-	          HAL_Delay(250);
+	          HAL_Delay(200);
 	      }
 
 
