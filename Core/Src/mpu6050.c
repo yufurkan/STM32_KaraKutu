@@ -9,6 +9,8 @@
 #include "mpu6050.h"
 #include <math.h>
 
+
+
 // Sensörü Uyandırma Fonksiyonu sonucu döndürüyor
 uint8_t MPU6050_Baslat(I2C_HandleTypeDef *hi2c)
 {
