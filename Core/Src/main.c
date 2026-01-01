@@ -19,7 +19,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ssd1306_fonts.h"
@@ -27,6 +26,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
+#include "mpu6050.h"
+#include "i2c_scanner.h"
 
 /* USER CODE END Includes */
 
@@ -37,8 +39,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-uint8_t veritamponu[6];
-int16_t AccX, AccY, AccZ; //gyro
+MPU6050_t Sensor;
+uint8_t sistem_modu = 0;
+uint32_t kaza_zamani = 0;
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,11 +58,13 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-#define MPU6050_WRITE_ADRES 0xD0 // (0x68 << 1)
-#define PWR_MGMT_1_REG 0x6B //uyandırma bölgesi
-#define ACCEL_XOUT_H_REG 0x3B // veri okumaya başlayadığımız nokta
-#define MPU6050_ADDR 0x68
-#define SSD1306_I2C_ADDR 0x78 //(0x3C << 1)
+
+//diğer dosyalara alındılar
+//#define MPU6050_WRITE_ADRES 0xD0 // (0x68 << 1)
+//#define PWR_MGMT_1_REG 0x6B //uyandırma bölgesi
+//#define ACCEL_XOUT_H_REG 0x3B // veri okumaya başlayadığımız nokta
+//#define MPU6050_ADDR 0x68
+//#define SSD1306_I2C_ADDR 0x78 //(0x3C << 1)
 
 
 /* USER CODE END PV */
@@ -71,7 +77,7 @@ static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
-void MPU6050_Baslat(void);
+
 
 
 /* USER CODE END PFP */
@@ -89,7 +95,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	char mesaj[64];//bilgisayara gönderilecek mesajlar
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -113,54 +119,43 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
+
+
+
+
   /* USER CODE BEGIN 2 */
 
-  char mesaj[64];
-    sprintf(mesaj, "I2C Tarama Basliyor\r\n");
-    // HAL_UART_Transmit bilgisayara mesaj yolluyorum
-    HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+  //---------------------------------------------------------------------------------------------------->
 
-    int cihazSayisi = 0;
+  I2C_Scanner_Baslat(&hi2c1, &huart2, "I2C1");
 
-    // 0'dan 127'ye kadar tüm adresleri yokla
-    for(uint16_t i = 0; i < 128; i++) {
+  I2C_Scanner_Baslat(&hi2c2, &huart2, "I2C2");
 
 
-        // Parametreler: (I2C Hattı, Adres, Deneme Sayısı, Bekleme Süresi)
-        //&hi2c1 I2Cnın ayar stuctu
-        if(HAL_I2C_IsDeviceReady(&hi2c1, (i << 1), 1, 10) == HAL_OK) {
+  if(MPU6050_Baslat(&hi2c1))
+      {
+	  	  HAL_Delay(500);
+          char m[] = "MPU6050 Baglantisi Kuruldu! \r\n";
+          HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
+      }
+      else
+      {
+          char m[] = "MPU6050 Cevap Vermiyor!\r\n";
+          HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
 
-            sprintf(mesaj, "BULUNDU! Adres: 0x%02X (Hex)\r\n", i);
-            HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-            cihazSayisi++;
-
-
-            HAL_Delay(10);
-        }
-
-        //Oledin adresini öğrenmek için kullandım
-        if(HAL_I2C_IsDeviceReady(&hi2c2, (i << 1), 1, 10) == HAL_OK) {
-
-                    sprintf(mesaj, "BULUNDU! Adres: 0x%02X (Hex)\r\n", i);
-                    HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-                    cihazSayisi++;
+          sprintf(mesaj, "!!! SENSOR KOPTU - RESETLENIYOR !!! \r\n");
+          HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
 
 
-                    HAL_Delay(10);
-                }
-    }
+		  HAL_I2C_DeInit(&hi2c1);
 
-    if (cihazSayisi == 0) {
-        sprintf(mesaj, "Hicbir cihaz bulunamadi.\r\n");
-        HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-    } else {
-        sprintf(mesaj, "--- Tarama Bitti. Toplam %d cihaz var ---\r\n", cihazSayisi);
-        HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-    }
+		  MX_I2C1_Init();
+		  HAL_Delay(50);
 
+		  MPU6050_Baslat(&hi2c1);
+          // Not: Resetleme işlemlerini yeniden eklenecek. buraya kütüphane içindeki hata yönetimine bırakabilir
 
-
-    MPU6050_Baslat();
+      }
 
     //OLED
     SSD1306_Init();
@@ -188,6 +183,7 @@ int main(void)
 
 
       SSD1306_UpdateScreen();
+      uint32_t son_ekran_zamani = HAL_GetTick();
 
   /* USER CODE END 2 */
 
@@ -199,68 +195,55 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  HAL_StatusTypeDef okumaDurumu; //bu bir enumdur. HAL_OK    HAL_ERROR    HAL_BUSY   HAL_TIMEOUT maddelerini içeriyor. buradan mesaj kontrolünü sağlıyorum.
-	 	  okumaDurumu = HAL_I2C_Mem_Read(&hi2c1,MPU6050_WRITE_ADRES, ACCEL_XOUT_H_REG, 1, veritamponu, 6, 100);//HAL_StatusTypeDef döndürür
+	  MPU6050_Oku(&hi2c1, &Sensor);
+
+	  if(Sensor.AccX == 0 && Sensor.AccY == 0 && Sensor.AccZ == 0) {
 
 
-	 	  //sensör jumper kabloların temassızlık yapması nedeniyle kopabiliyor. Koparsa 0x6B adresinin tekrar sıfırlanıp sensörün tekrar uyandırılması gerekiyor.
-	 	  if(okumaDurumu==HAL_OK){
-	 	  	 AccX= (int16_t)(veritamponu[0]<<8 | veritamponu[1]);
-	 	     AccY= (int16_t)(veritamponu[2]<<8 | veritamponu[3]);
-	 	     AccZ= (int16_t)(veritamponu[4]<<8 | veritamponu[5]);
+		    sprintf(mesaj, "MPU6050 Baslatılıyor G \r\n");
+		   	HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	        MPU6050_Baslat(&hi2c1);
+	      }
 
-	 	     //temassızlık durumunda veriler 0 oluyor sadece okumaDurumu==HAL_OK kontrolü yeterli gelmiyor sensör veri gönderdiğini söylüyor.
-	 	     if(AccX == 0 && AccY == 0 && AccZ == 0)
-	 	               {
-	 	                   sprintf(mesaj, "!!! Sensör uyku modunda. Resetleniyor !!! \r\n");
-	 	                   HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	      //  MOD DEĞİŞTİRME
+	      if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET){
+	          sistem_modu++;
+	          if(sistem_modu >= 2) sistem_modu = 0;
+	          HAL_Delay(200);
+	      }
 
-	 	                   MPU6050_Baslat();
-	 	               }
-	 	    	 sprintf(mesaj,
-	 	    	         "AccX=%d  AccY=%d  AccZ=%d\r\n",
-	 	    	         AccX, AccY, AccZ);
 
-	 	     HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-	 	     sprintf(mesaj, "  \r\n");
-	 	     HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	      if (HAL_GetTick() - son_ekran_zamani > 100)
+	      {
+	          // Saati güncelle
+	          son_ekran_zamani = HAL_GetTick();
 
-	 	     //tamsayı şeklinde bölmesin diye .0 koydum
-	 	     float ax_g = AccX / 16384.0;
-	 	     float ay_g = AccY / 16384.0;
-	 	     float az_g = AccZ / 16384.0;
+	          // Bilgisayaera yaz
+	          sprintf(mesaj, "Kuvvet: %.2f G \r\n", Sensor.ToplamKuvvet);
+	          HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
 
-	 	     float toplamkuvvet = sqrt((ax_g * ax_g) + (ay_g * ay_g) + (az_g * az_g));
 
-	 	     sprintf(mesaj, "Kuvvet: %.2f G \r\n", toplamkuvvet);
-	 	     	  HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	          if (Sensor.ToplamKuvvet <= 2.2) {
+	               SSD1306_GotoXY(0, 45);
+	               SSD1306_Puts("Kayit: BEKLIYOR ", Font_7x10, White);
+	               SSD1306_UpdateScreen();
+	          }
+	      }
 
-	 	     //2.2G kuvvetinden fazla değer ölçülürse kayıt işlenecek burada
-	 	     //şimdilik kaza durumunu simüle ediyor
-	 	     if (toplamkuvvet > 2.2)
-	 	     	 {
-	 	     	 sprintf(mesaj, "!!! KAZA ALGILANDI !!! \r\n");// etkinleştirmek için senöre parmağınızla vurun
-	 	     	 HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-	 	     	 SSD1306_GotoXY(0, 45);
-	 	     	 SSD1306_Puts("KAZA ALGILANDI", Font_7x10, White);
-	 	     	 SSD1306_UpdateScreen();
 
-	 	     	 HAL_Delay(1000);
-	 	     	 }else{
-	 	     		SSD1306_GotoXY(0, 45);
-	 	     		SSD1306_Puts("Kayit: BEKLIYOR", Font_7x10, White);
-	 	     		SSD1306_UpdateScreen();
-	 	     	 }
-	 	  }else{
+	      if (Sensor.ToplamKuvvet > 2.2)
+	      {
+	           char kaza[] = "!!! KAZA ALGILANDI !!! \r\n";
+	           HAL_UART_Transmit(&huart2, (uint8_t*)kaza, strlen(kaza), 100);
 
-	 		  sprintf(mesaj, "!!! Bağlantı koptu. Sensör Yeniden başlatılıyor !!! \r\n");
-	 		  HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+	           SSD1306_GotoXY(0, 45);
+	           SSD1306_Puts("KAZA ALGILANDI  ", Font_7x10, White);
+	           SSD1306_UpdateScreen();
 
-	 		  MPU6050_Baslat();
+	           HAL_Delay(1000); // Kaza uyarısı ekranda kalsın diye bilerek bekletiyoruz
+	      }
 
-	 	  }
-	 	  HAL_Delay(500);
-  }
+	    }
   /* USER CODE END 3 */
 }
 
@@ -433,11 +416,11 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -456,34 +439,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 
-void MPU6050_Baslat(void)
-{
-    uint8_t uyandirici = 0;
-    HAL_StatusTypeDef sonuc;
 
-    //sensörün 0x6B registerini 0 yapıp uyandır
-    sonuc = HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADRES, PWR_MGMT_1_REG, 1, &uyandirici, 1, 100);
-
-    if(sonuc == HAL_OK)
-    {
-        char msg[] = "MPU6050 Baglantisi Kuruldu! \r\n";
-        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-    }
-    else
-    {
-
-        char msg[] = "MPU6050 Cevap Vermiyor!\r\n";
-        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-
-        //Peripheral Reset
-
-        //Uzun süre sensörün voltaj kablosu çıkarılırsa tekrar sinyal alınamıyor ve program resetlenmek zorunda kalıyor
-        //HAL_I2C_Mem_Writ işe yaramaz ise I2C1 modülünü resetler
-        HAL_I2C_DeInit(&hi2c1);
-        MX_I2C1_Init();
-        HAL_Delay(100);
-    }
-}
 
 
 /* USER CODE END 4 */
