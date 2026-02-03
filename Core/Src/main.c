@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -26,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include "fatfs_sd.h"
 
 #include "mpu6050.h"
 #include "i2c_scanner.h"
@@ -41,8 +43,16 @@
 /* USER CODE BEGIN PD */
 MPU6050_t Sensor;
 uint8_t sistem_modu = 0;
-uint32_t kaza_zamani = 0;
 
+
+uint32_t kaza_zamani = 0;
+uint8_t kaza_durumu = 0;
+
+
+FATFS fs;
+FIL dosya;
+FRESULT hata;
+char dosyaAdi[] = "LOG.TXT";
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,11 +64,13 @@ uint32_t kaza_zamani = 0;
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
+SPI_HandleTypeDef hspi2;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-
+char mesaj[64];
 //diğer dosyalara alındılar
 //#define MPU6050_WRITE_ADRES 0xD0 // (0x68 << 1)
 //#define PWR_MGMT_1_REG 0x6B //uyandırma bölgesi
@@ -75,6 +87,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
 
@@ -95,7 +108,10 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	char mesaj[64];//bilgisayara gönderilecek mesajlar
+
+	uint8_t kaza_durumu = 0;
+	uint32_t kaza_zamani = 0;
+	uint32_t son_ekran_zamani;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -119,10 +135,8 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
-
-
-
-
+  MX_SPI2_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
   //---------------------------------------------------------------------------------------------------->
@@ -132,58 +146,57 @@ int main(void)
   I2C_Scanner_Baslat(&hi2c2, &huart2, "I2C2");
 
 
-  if(MPU6050_Baslat(&hi2c1))
-      {
-	  	  HAL_Delay(500);
-          char m[] = "MPU6050 Baglantisi Kuruldu! \r\n";
-          HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
-      }
-      else
-      {
-          char m[] = "MPU6050 Cevap Vermiyor!\r\n";
-          HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
+  if(MPU6050_Baslat(&hi2c1)) {
+        char m[] = "MPU6050 Hazir!\r\n";
+        HAL_UART_Transmit(&huart2, (uint8_t*)m, strlen(m), 100);
+    }
 
-          sprintf(mesaj, "!!! SENSOR KOPTU - RESETLENIYOR !!! \r\n");
-          HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-
-
-		  HAL_I2C_DeInit(&hi2c1);
-
-		  MX_I2C1_Init();
-		  HAL_Delay(50);
-
-		  MPU6050_Baslat(&hi2c1);
-          // Not: Resetleme işlemlerini yeniden eklenecek. buraya kütüphane içindeki hata yönetimine bırakabilir
-
-      }
-
-    //OLED
+    // OLED
     SSD1306_Init();
-    SSD1306_DrawPixel(10, 10, White);
+    SSD1306_Fill(Black);
+    SSD1306_GotoXY(20, 0);
+    SSD1306_Puts("KARA KUTU", Font_11x18, White);
     SSD1306_UpdateScreen();
 
+    //SD KART
+    printf("SD Kart Baglaniyor...\n");
 
-    SSD1306_Fill(Black);
+    // A) Kartı Sisteme Tak (Mount)
+    hata = f_mount(&fs, "", 1);
 
+    if(hata != FR_OK)
+    {
+        sprintf(mesaj, "SD KART HATASI: %d \r\n", hata);
+        HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+        SSD1306_GotoXY(0, 30);
+        SSD1306_Puts("SD: HATA!", Font_7x10, White);
+        HAL_Delay(100);
+    }
+    else
+    {
+        sprintf(mesaj, "SD Kart Takildi. Dosya aciliyor...\r\n");
+        HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
 
-      SSD1306_GotoXY(20, 0);
-      SSD1306_Puts("KARA KUTU", Font_11x18, White);
+        hata = f_open(&dosya, dosyaAdi, FA_OPEN_ALWAYS | FA_WRITE | FA_OPEN_APPEND);
 
-      // aaltına Çizgi Çek
-      for(int i=0; i<128; i++) {
-    	  SSD1306_DrawPixel(i, 20, White);
-      }
+        if(hata == FR_OK)
+        {
 
+            f_printf(&dosya, "\n--- SISTEM BASLATILDI ---\n");
+            f_close(&dosya);
 
-      SSD1306_GotoXY(0, 30); // aşağı in
-      SSD1306_Puts("Sistem: AKTIF", Font_7x10, White);
+            SSD1306_GotoXY(0, 30);
+            SSD1306_Puts("SD: KAYIT OK", Font_7x10, White);
+        }
+        else
+        {
+            sprintf(mesaj, "Dosya Acilamadi: %d \r\n", hata);
+            HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+        }
+    }
 
-      SSD1306_GotoXY(0, 45);
-      SSD1306_Puts("Kayit: BEKLIYOR", Font_7x10, White);
-
-
-      SSD1306_UpdateScreen();
-      uint32_t son_ekran_zamani = HAL_GetTick();
+    SSD1306_UpdateScreen();
+    son_ekran_zamani = HAL_GetTick();
 
   /* USER CODE END 2 */
 
@@ -198,52 +211,66 @@ int main(void)
 	  MPU6050_Oku(&hi2c1, &Sensor);
 
 	  if(Sensor.AccX == 0 && Sensor.AccY == 0 && Sensor.AccZ == 0) {
+		sprintf(mesaj, "MPU6050 Baslatılıyor G \r\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
+		MPU6050_Baslat(&hi2c1);
+	  }
 
 
-		    sprintf(mesaj, "MPU6050 Baslatılıyor G \r\n");
-		   	HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-	        MPU6050_Baslat(&hi2c1);
-	      }
-
-	      //  MOD DEĞİŞTİRME
-	      if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET){
-	          sistem_modu++;
-	          if(sistem_modu >= 2) sistem_modu = 0;
-	          HAL_Delay(200);
-	      }
+	  //-----------DEVAM EDEN KAZA
+	  if(kaza_durumu == 1 && (HAL_GetTick() - kaza_zamani > 2000))kaza_durumu = 0;
 
 
-	      if (HAL_GetTick() - son_ekran_zamani > 100)
-	      {
-	          // Saati güncelle
-	          son_ekran_zamani = HAL_GetTick();
+	  //-----------Ekran Güncelleme
+	  if (HAL_GetTick() - son_ekran_zamani > 100)
+	  {
+		  // Saati güncelle
+		  son_ekran_zamani = HAL_GetTick();
 
-	          // Bilgisayaera yaz
-	          sprintf(mesaj, "Kuvvet: %.2f G \r\n", Sensor.ToplamKuvvet);
-	          HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
-
-
-	          if (Sensor.ToplamKuvvet <= 2.2) {
-	               SSD1306_GotoXY(0, 45);
-	               SSD1306_Puts("Kayit: BEKLIYOR ", Font_7x10, White);
-	               SSD1306_UpdateScreen();
-	          }
-	      }
+		  // Bilgisayaera yaz
+		  sprintf(mesaj, "Kuvvet: %.2f G \r\n", Sensor.ToplamKuvvet);
+		  HAL_UART_Transmit(&huart2, (uint8_t*)mesaj, strlen(mesaj), 100);
 
 
-	      if (Sensor.ToplamKuvvet > 2.2)
-	      {
-	           char kaza[] = "!!! KAZA ALGILANDI !!! \r\n";
-	           HAL_UART_Transmit(&huart2, (uint8_t*)kaza, strlen(kaza), 100);
+		  if(kaza_durumu == 0) {
+			   SSD1306_GotoXY(0, 45);
+			   SSD1306_Puts("Kayit: BEKLIYOR ", Font_7x10, White);
+			   SSD1306_UpdateScreen();
+		  }
 
-	           SSD1306_GotoXY(0, 45);
-	           SSD1306_Puts("KAZA ALGILANDI  ", Font_7x10, White);
-	           SSD1306_UpdateScreen();
+	  }
 
-	           HAL_Delay(1000); // Kaza uyarısı ekranda kalsın diye bilerek bekletiyoruz
-	      }
+	  //----------KAZA
+	  if (Sensor.ToplamKuvvet > 2.2 && kaza_durumu==0)
+	  {
+		   char kaza[] = "!!! KAZA ALGILANDI !!! \r\n";
+		   HAL_UART_Transmit(&huart2, (uint8_t*)kaza, strlen(kaza), 100);
 
-	    }
+		   kaza_durumu = 1;
+		   kaza_zamani = HAL_GetTick();
+
+
+		   SSD1306_GotoXY(0, 45);
+		   SSD1306_Puts("KAZA ALGILANDI  ", Font_7x10, White);
+		   SSD1306_UpdateScreen();
+
+		   if(f_mount(&fs, "", 1) == FR_OK)
+		   {
+			   if(f_open(&dosya, dosyaAdi, FA_OPEN_APPEND | FA_WRITE) == FR_OK)
+			   {
+
+				   f_printf(&dosya, "KAZA! Kuvvet: %d.%d G\n",
+							(int)Sensor.ToplamKuvvet,
+							(int)(Sensor.ToplamKuvvet * 100) % 100);
+
+				   f_close(&dosya);
+			   }
+		   }
+
+
+	  }
+
+	}
   /* USER CODE END 3 */
 }
 
@@ -363,6 +390,44 @@ static void MX_I2C2_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -414,7 +479,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|SD_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -422,12 +487,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : LD2_Pin SD_CS_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin|SD_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

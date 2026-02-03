@@ -23,28 +23,28 @@ This project implements a robust **Black Box** system using the **STM32F446RE** 
 - **Display:** 0.96 inch OLED Display (SSD1306 Driver - I2C)
 - **Storage:** Micro SD Card Module (SPI Interface)
 
-## 🔌 Pin Configuration (Typical)
+## 🔌 Pin Configuration (Custom Setup)
 
-| Component | Pin Name | STM32 Pin | Protocol |
-|-----------|----------|-----------|----------|
-| **GY-87** | SCL      | PB8 (D15) | I2C1     |
-|           | SDA      | PB9 (D14) | I2C1     |
-| **OLED** | SCL      | PB8 (D15) | I2C1     |
-|           | SDA      | PB9 (D14) | I2C1     |
-| **SD Card**| SCK     | PA5 (D13) | SPI1     |
-|           | MISO     | PA6 (D12) | SPI1     |
-|           | MOSI     | PA7 (D11) | SPI1     |
-|           | CS      | PB6 (D10) | GPIO     |
+| Component  | Pin Name | STM32 Pin | Protocol | Notes                     |
+| :---       | :---     | :---      | :---     | :---                      |
+| **GY-87** | SCL      | PB8 (D15) | I2C1     | Motion Sensors            |
+|            | SDA      | PB9 (D14) | I2C1     |                           |
+| **OLED** | SCL      | PB10      | I2C2     | Status Screen             |
+|            | SDA      | PC12      | I2C2     |                           |
+| **SD Card**| SCK      | **PB13** | **SPI2** | **Clock Signal** |
+|            | MISO     | **PC2** | **SPI2** | **Master In Slave Out** |
+|            | MOSI     | **PC1** | **SPI2** | **Master Out Slave In** |
+|            | CS       | PB6 (D10) | GPIO     | Chip Select (User Config) |
 
 ## 🚀 How It Works
-1. **System Check:** Initializes all sensors, OLED, and mounts the SD Card.
+1. **System Check:** Initializes all sensors, OLED (I2C2), and mounts the SD Card (SPI2).
 2. **Loop:**
-   - Reads Acceleration (MPU6050).
+   - Reads Acceleration (MPU6050) via I2C1.
    - Reads Compass Heading (HMC5883L).
    - Reads Altitude (BMP180).
-   - Updates the OLED Display.
-   - Logs data string to `log.txt` on SD Card.
-3. **Safety:** Monitors I2C connection health and performs hardware reset if sensors freeze.
+   - Updates the OLED Display via I2C2.
+   - Logs data string to `log.txt` on SD Card via SPI2.
+3. **Safety:** Monitors connection health and performs hardware reset if sensors freeze.
 
 ---
 *Developed by Yusuf Furkan Umutlu using STM32CubeIDE & HAL Library.*
